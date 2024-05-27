@@ -1,7 +1,9 @@
-use ethers::utils::{keccak256, hex};
-use ethers::types::Address;
+use ethers::utils::hex;
 use rand::Rng;
 use sha3::{Digest, Keccak256};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Instant;
 
 const PROXY_BYTECODE_HASH: &str = "0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f";
 const FACTORY_ADDRESS: &str = "0x93FEC2C00BfE902F733B57c5a6CeeD7CD1384AE1";
@@ -45,25 +47,50 @@ fn get_deployed(salt: &[u8], deployer_address: &str) -> String {
     format!("0x{}", deployed_address)
 }
 
-fn find_salt_with_prefix(deployer_address: &str, prefix: &str) -> (String, String) {
-    let mut rng = rand::thread_rng();
+fn find_salt_with_prefix(deployer_address: &str, prefix: &str, num_threads: usize) -> (String, String) {
+    let result = Arc::new(Mutex::new(None));
+    let deployer_address = Arc::new(deployer_address.to_string());
+    let prefix = Arc::new(prefix.to_string());
 
-    loop {
-        // Generate a random salt
-        let random_salt: [u8; 32] = rng.gen();
-        let deployed_address = get_deployed(&random_salt, deployer_address);
+    let mut handles = vec![];
 
-        if deployed_address.starts_with(prefix) {
-            return (hex::encode(random_salt), deployed_address);
-        }
+    for _ in 0..num_threads {
+        let result = Arc::clone(&result);
+        let deployer_address = Arc::clone(&deployer_address);
+        let prefix = Arc::clone(&prefix);
+
+        let handle = thread::spawn(move || {
+            let mut rng = rand::thread_rng();
+            while result.lock().unwrap().is_none() {
+                // Generate a random salt
+                let random_salt: [u8; 32] = rng.gen();
+                let deployed_address = get_deployed(&random_salt, &deployer_address);
+
+                if deployed_address.starts_with(&prefix[..]) {
+                    let mut result = result.lock().unwrap();
+                    *result = Some((hex::encode(random_salt), deployed_address));
+                }
+            }
+        });
+
+        handles.push(handle);
     }
-}
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let x = result.lock().unwrap().clone().unwrap(); x}
 
 fn main() {
+    let start = Instant::now();
     let deployer_address = "0x0c35464E6bfa9cBBc29e0d0ae72B329B9773d3bC";
     let prefix = "0xc0041e";
-    let (salt, deployed_address) = find_salt_with_prefix(deployer_address, prefix);
+    let num_threads = 16; // Adjust the number of threads based on your CPU
+
+    let (salt, deployed_address) = find_salt_with_prefix(deployer_address, prefix, num_threads);
 
     println!("Found salt: 0x{}", salt);
     println!("Deployed address: {}", deployed_address);
+    println!("Time taken: {:?}", start.elapsed());
 }
