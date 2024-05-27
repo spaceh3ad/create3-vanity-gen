@@ -4,6 +4,7 @@ use sha3::{Digest, Keccak256};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
+use std::env;
 
 const PROXY_BYTECODE_HASH: &str = "0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f";
 const FACTORY_ADDRESS: &str = "0x93FEC2C00BfE902F733B57c5a6CeeD7CD1384AE1";
@@ -83,10 +84,18 @@ fn find_salt_with_prefix(deployer_address: &str, prefix: &str, num_threads: usiz
     let x = result.lock().unwrap().clone().unwrap(); x}
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() -1 != 3 {
+        println!("Usage: {} <num_threads> <deployer_address> <prefix> [FACTORY | PROXY_BYTECODE]", args[0]);
+        return;
+    }
+
     let start = Instant::now();
-    let deployer_address = "0x0c35464E6bfa9cBBc29e0d0ae72B329B9773d3bC";
-    let prefix = "0xc0041e";
-    let num_threads = 16; // Adjust the number of threads based on your CPU
+    
+    let num_threads: usize =  args[1].parse().unwrap();
+    let deployer_address =  &args[2];
+    let prefix =  &args[3];
 
     let (salt, deployed_address) = find_salt_with_prefix(deployer_address, prefix, num_threads);
 
